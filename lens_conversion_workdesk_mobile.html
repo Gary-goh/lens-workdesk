@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lens Conversion Workdesk</title>
+  <style>
+    :root{
+      --bg:#f8fafc; --card:#ffffff; --text:#0f172a; --muted:#475569;
+      --border:#e2e8f0; --accent:#2563eb; --good:#166534; --bad:#b91c1c;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:860px;margin:0 auto;padding:16px}
+    .title{font-size:28px;font-weight:800;margin:0 0 6px}
+    .sub{color:var(--muted);font-size:14px;margin:0 0 16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:14px}
+    .grid{display:grid;gap:12px}
+    .g4{grid-template-columns:1fr 1fr}
+    .g3{grid-template-columns:1fr}
+    .g2{grid-template-columns:1fr}
+    label{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
+    input,select,button{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:12px;font-size:16px;background:#fff}
+    button{background:var(--accent);color:#fff;border:none;font-weight:700}
+    button.secondary{background:#fff;color:var(--text);border:1px solid var(--border)}
+    .row{display:grid;gap:10px}
+    .badges{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}
+    .badge{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:10px 12px;border-radius:12px;text-align:center;font-weight:700;font-size:14px}
+    .badge.neutral{background:#f8fafc;border-color:var(--border);color:#334155}
+    .result-title{font-size:14px;font-weight:800;margin:0 0 8px}
+    .result-main{font-size:20px;font-weight:800;margin:0 0 8px}
+    .muted{color:var(--muted);font-size:14px;line-height:1.45}
+    .ok{color:var(--good);font-weight:800}
+    .warn{color:var(--bad);font-weight:800}
+    .tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+    .tab{padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:#fff;font-weight:700}
+    .tab.active{background:#dbeafe;border-color:#93c5fd;color:#1d4ed8}
+    .hidden{display:none}
+    .foot{font-size:12px;color:var(--muted);line-height:1.5}
+    @media(min-width:700px){
+      .g4{grid-template-columns:repeat(4,1fr)}
+      .g3{grid-template-columns:repeat(3,1fr)}
+      .g2{grid-template-columns:repeat(2,1fr)}
+      .badges{grid-template-columns:repeat(4,1fr)}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title">Lens Conversion Workdesk</h1>
+    <p class="sub">Offline mobile version. Enter spectacle prescription details to estimate contact-lens category, vertex-adjusted power, and whether the case is likely stock range or MTO.</p>
+
+    <div class="tabs">
+      <button class="tab active" id="tab-right" onclick="showEye('right')">Right Eye</button>
+      <button class="tab" id="tab-left" onclick="showEye('left')">Left Eye</button>
+    </div>
+
+    <div id="panel-right"></div>
+    <div id="panel-left" class="hidden"></div>
+
+    <div class="card">
+      <div class="result-title">Important Notes</div>
+      <div class="foot">
+        1. This tool is for sales support and training, not a final clinical fitting decision.<br>
+        2. Final lens selection still depends on K readings, corneal topography, tear film, wearing goals, and practitioner judgment.<br>
+        3. Brand limits differ. A case marked possible may still become MTO depending on diameter, base curve, axis availability, and supplier rules.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function roundQuarter(v){ return Math.round(v*4)/4; }
+    function num(v){ const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
+    function vertexConvert(power, mm=12){
+      if (Math.abs(power) < 4) return power;
+      const d = mm / 1000;
+      return roundQuarter(power / (1 - d * power));
+    }
+    function sphereEquivalent(sph, cyl){ return roundQuarter(sph + cyl/2); }
+
+    function classifyLens(ageGroup, sph, cyl, add, irregularCornea){
+      const absSph = Math.abs(sph), absCyl = Math.abs(cyl);
+      if (irregularCornea) return {
+        primary:"Specialty GP / Scleral",
+        reason:"Irregular cornea cases are usually better suited for specialty GP or scleral lenses.",
+        mto:true
+      };
+      if (ageGroup === "child") return {
+        primary:"Myopia Control / Ortho-K",
+        reason:"Child case: discuss myopia-control options such as Ortho-K or daytime myopia-control lenses.",
+        mto: absCyl > 2.25 || absSph > 6
+      };
+      if (add > 0 && absCyl > 1.75) return {
+        primary:"Soft Conventional Multifocal Toric",
+        reason:"Presbyopia with notable astigmatism usually points to a custom multifocal toric lens.",
+        mto:true
+      };
+      if (add > 0) return {
+        primary:"Soft Conventional Multifocal",
+        reason:"Presbyopia cases often need multifocal correction, often in conventional custom lenses.",
+        mto:true
+      };
+      if (absCyl > 3.0) return {
+        primary:"RGP Toric / Specialty GP",
+        reason:"High astigmatism above -3.00D often fits better with RGP or specialty GP designs.",
+        mto:true
+      };
+      if (absCyl > 2.25) return {
+        primary:"RGP or Soft Conventional Toric",
+        reason:"Astigmatism beyond standard disposable ranges often requires RGP or custom toric lenses.",
+        mto:true
+      };
+      if (absSph > 8.0) return {
+        primary:"Soft Conventional or RGP",
+        reason:"High power beyond common disposable ranges usually requires conventional or RGP lenses.",
+        mto:true
+      };
+      if (absSph > 6.0 || absCyl > 1.75) return {
+        primary:"Soft Toric / Conventional Consideration",
+        reason:"This may still fit soft toric options, but custom conventional lenses may be needed depending on brand limits.",
+        mto: absSph > 8 || absCyl > 2.25
+      };
+      return {
+        primary:"Soft Disposable",
+        reason:"This looks like a straightforward case that may fit standard soft disposable parameters.",
+        mto:false
+      };
+    }
+
+    function meniconSoftStatus(sph, cyl, add){
+      const absCyl = Math.abs(cyl);
+      if (add > 0){
+        const inRange = sph <= 6 && sph >= -13;
+        return {
+          label: inRange ? "Menicon Soft Multifocal possible" : "Soft multifocal likely MTO",
+          detail: inRange ? "Close to Menicon Miru 1month Multifocal range (+6.00 to -13.00)." : "Outside common monthly multifocal range. Custom conventional multifocal may be needed.",
+          ok: inRange
+        };
+      }
+      if (absCyl > 0){
+        const sphRange = sph <= 0 && sph >= -10;
+        const toricPossible = sphRange && [0.75,1.25,1.75,2.25].includes(absCyl);
+        return {
+          label: toricPossible ? "Soft toric may fit stock range" : "Soft toric may need custom lens",
+          detail: toricPossible ? "Could fit typical disposable toric parameters if axis is supported by the chosen brand." : "CYL / power combination may exceed common disposable toric limits and move into conventional custom range.",
+          ok: toricPossible
+        };
+      }
+      const sphericalPossible = sph >= -13 && sph <= 6;
+      return {
+        label: sphericalPossible ? "Soft spherical likely possible" : "Soft spherical likely custom",
+        detail: sphericalPossible ? "Within common monthly soft spherical range for several Menicon lines." : "Sphere is beyond common stock soft range and may need conventional or specialty ordering.",
+        ok: sphericalPossible
+      };
+    }
+
+    function ocuviqStatus(ageGroup, sph, cyl, irregularCornea){
+      const absCyl = Math.abs(cyl);
+      if (irregularCornea) return {
+        label:"OCUVIQ Specialty GP candidate",
+        detail:"Irregular cornea cases may suit OCUVIQ specialty GP / scleral categories rather than myopia-control designs.",
+        ok:true
+      };
+      if (ageGroup === "child"){
+        if (sph <= -0.25 && sph >= -7 && absCyl <= 4){
+          return {
+            label:"OCUVIQ Ortho-K candidate",
+            detail:"Looks broadly within OCUVIQ Ortho-K treatment range; final choice still depends on K readings and topography.",
+            ok:true
+          };
+        }
+        if (sph <= 0 && sph >= -20){
+          return {
+            label:"OCUVIQ Myofocal day lens candidate",
+            detail:"Could fit OCUVIQ Myofocal daytime myopia-control range; confirm corneal fit and diameter requirements.",
+            ok:true
+          };
+        }
+      }
+      return {
+        label:"OCUVIQ not primary choice",
+        detail:"For adult non-myopia-control cases, standard soft, conventional, or RGP options may be the main discussion instead.",
+        ok:false
+      };
+    }
+
+    function rgpNote(sph, cyl){
+      if (Math.abs(cyl) > 3) return "Strong RGP candidate. Consider toric or specialty GP design.";
+      if (Math.abs(cyl) > 2.25) return "Consider RGP if disposable toric range is insufficient.";
+      if (Math.abs(sph) > 8) return "High power case: RGP or conventional soft may be more practical.";
+      return "Use corneal topography / K readings before final RGP parameters.";
+    }
+
+    function mtoReason(ageGroup, sph, cyl, add, irregular){
+      const absSph = Math.abs(sph), absCyl = Math.abs(cyl);
+      if (irregular) return "Irregular cornea";
+      if (ageGroup === "child" && (absCyl > 2.25 || absSph > 6)) return "Child case with higher cyl/power";
+      if (add > 0) return "ADD present / multifocal";
+      if (absCyl > 2.25) return "CYL above -2.25";
+      if (absSph > 8) return "SPH above ±8.00";
+      return "Within common stock range";
+    }
+
+    function makeFormHtml(side){
+      return `
+      <div class="card">
+        <div class="grid g4">
+          <div><label>SPH</label><input id="${side}-sph" value="-4.50" inputmode="decimal"></div>
+          <div><label>CYL</label><input id="${side}-cyl" value="-1.75" inputmode="decimal"></div>
+          <div><label>AXIS</label><input id="${side}-axis" value="180" inputmode="numeric"></div>
+          <div><label>ADD</label><input id="${side}-add" value="0.00" inputmode="decimal"></div>
+        </div>
+        <div class="grid g3" style="margin-top:12px">
+          <div>
+            <label>Age Group</label>
+            <select id="${side}-age">
+              <option value="adult">Adult</option>
+              <option value="child">Child / Teen</option>
+            </select>
+          </div>
+          <div>
+            <label>Irregular Cornea</label>
+            <select id="${side}-irr">
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </div>
+          <div>
+            <label>Vertex Distance (mm)</label>
+            <input id="${side}-vd" value="12" inputmode="decimal">
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button onclick="calc('${side}')">Calculate</button>
+          <button class="secondary" onclick="resetForm('${side}')">Reset</button>
+        </div>
+      </div>
+      <div id="${side}-results"></div>`;
+    }
+
+    document.getElementById('panel-right').innerHTML = makeFormHtml('right');
+    document.getElementById('panel-left').innerHTML = makeFormHtml('left');
+    calc('right'); calc('left');
+
+    function showEye(side){
+      document.getElementById('panel-right').classList.toggle('hidden', side !== 'right');
+      document.getElementById('panel-left').classList.toggle('hidden', side !== 'left');
+      document.getElementById('tab-right').classList.toggle('active', side === 'right');
+      document.getElementById('tab-left').classList.toggle('active', side === 'left');
+    }
+
+    function resetForm(side){
+      document.getElementById(`${side}-sph`).value = "0.00";
+      document.getElementById(`${side}-cyl`).value = "0.00";
+      document.getElementById(`${side}-axis`).value = "180";
+      document.getElementById(`${side}-add`).value = "0.00";
+      document.getElementById(`${side}-age`).value = "adult";
+      document.getElementById(`${side}-irr`).value = "no";
+      document.getElementById(`${side}-vd`).value = "12";
+      calc(side);
+    }
+
+    function calc(side){
+      const sph = num(document.getElementById(`${side}-sph`).value);
+      const cyl = num(document.getElementById(`${side}-cyl`).value);
+      const axis = num(document.getElementById(`${side}-axis`).value);
+      const add = num(document.getElementById(`${side}-add`).value);
+      const age = document.getElementById(`${side}-age`).value;
+      const irregular = document.getElementById(`${side}-irr`).value === 'yes';
+      const vd = num(document.getElementById(`${side}-vd`).value) || 12;
+
+      const se = sphereEquivalent(sph, cyl);
+      const vertexSph = vertexConvert(sph, vd);
+      const vertexSE = vertexConvert(se, vd);
+      const cls = classifyLens(age, sph, cyl, add, irregular);
+      const men = meniconSoftStatus(vertexSph, cyl, add);
+      const ocu = ocuviqStatus(age, vertexSph, cyl, irregular);
+      const mto = mtoReason(age, sph, cyl, add, irregular);
+      const rgp = rgpNote(sph, cyl);
+
+      document.getElementById(`${side}-results`).innerHTML = `
+        <div class="badges">
+          <div class="badge neutral">Sphere Eq: ${se.toFixed(2)}</div>
+          <div class="badge neutral">CL Vertex SPH: ${vertexSph.toFixed(2)}</div>
+          <div class="badge neutral">CL Vertex SE: ${vertexSE.toFixed(2)}</div>
+          <div class="badge">${cls.mto ? 'MTO likely' : 'Standard range possible'}</div>
+        </div>
+
+        <div class="grid g2" style="margin-top:12px">
+          <div class="card">
+            <div class="result-title">Recommended Lens Category</div>
+            <div class="result-main">${cls.primary}</div>
+            <div class="muted">${cls.reason}</div>
+          </div>
+
+          <div class="card">
+            <div class="result-title">MTO Reason</div>
+            <div class="result-main">${mto}</div>
+            <div class="muted">Axis entered: ${axis || 0}. Final toric or RGP design still depends on corneal findings and fitting assessment.</div>
+          </div>
+
+          <div class="card">
+            <div class="result-title">RGP / Custom Lens Note</div>
+            <div class="muted">${rgp}</div>
+          </div>
+
+          <div class="card">
+            <div class="result-title">Menicon / Soft Range Check</div>
+            <div class="${men.ok ? 'ok' : 'warn'}">${men.label}</div>
+            <div class="muted" style="margin-top:6px">${men.detail}</div>
+          </div>
+
+          <div class="card">
+            <div class="result-title">OCUVIQ / Myopia-Control Check</div>
+            <div class="${ocu.ok ? 'ok' : 'warn'}">${ocu.label}</div>
+            <div class="muted" style="margin-top:6px">${ocu.detail}</div>
+          </div>
+        </div>`;
+    }
+  </script>
+</body>
+</html>
